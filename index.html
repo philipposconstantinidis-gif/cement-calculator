@@ -437,9 +437,9 @@
                 </div>
                 <div>
                     <div class="toggle-group-label">Bag Size</div>
-                    <div class="unit-toggle">
-                        <button class="active" onclick="setBagSize(25)" id="btn-25kg">25 kg</button>
-                        <button onclick="setBagSize(20)" id="btn-20kg">20 kg</button>
+                    <div class="unit-toggle" id="bag-toggle">
+                        <button class="active" onclick="setBagSize(25)" id="btn-bag1">25 kg</button>
+                        <button onclick="setBagSize(20)" id="btn-bag2">20 kg</button>
                     </div>
                 </div>
             </div>
@@ -533,17 +533,17 @@
                 <div class="result-item">
                     <div class="result-label">Sharp Sand</div>
                     <div class="result-value" id="res-sand">0.30</div>
-                    <div class="result-detail">tonnes</div>
+                    <div class="result-detail" id="res-sand-unit">tonnes</div>
                 </div>
                 <div class="result-item">
                     <div class="result-label">Gravel (20mm)</div>
                     <div class="result-value" id="res-gravel">0.46</div>
-                    <div class="result-detail">tonnes</div>
+                    <div class="result-detail" id="res-gravel-unit">tonnes</div>
                 </div>
                 <div class="result-item cost-item">
                     <div class="result-label">Est. Material Cost</div>
                     <div class="result-value" id="res-cost">£95</div>
-                    <div class="result-detail">approximate UK prices</div>
+                    <div class="result-detail" id="res-cost-detail">approximate UK prices</div>
                 </div>
             </div>
 
@@ -671,18 +671,27 @@
 <script>
     let currentUnit = 'metric';
     let bagSize = 25;
+    let bagSizeKg = 25; // always track in kg internally
 
-    const PRICES = {
-        25: 6.00,
-        20: 5.00,
-        sandPerTonne: 55,
-        gravelPerTonne: 50
+    const PRICES_UK = {
+        25: 6.00, 20: 5.00,
+        sandPerTonne: 55, gravelPerTonne: 50
+    };
+    const PRICES_US = {
+        // US bags: 80lb (~36.3kg) and 94lb (~42.6kg)
+        80: 5.50, 94: 6.50,
+        sandPerTon: 50, gravelPerTon: 45
     };
 
     function setBagSize(size) {
         bagSize = size;
-        document.getElementById('btn-25kg').classList.toggle('active', size === 25);
-        document.getElementById('btn-20kg').classList.toggle('active', size === 20);
+        if (currentUnit === 'imperial') {
+            bagSizeKg = size === 80 ? 36.3 : 42.6;
+        } else {
+            bagSizeKg = size;
+        }
+        document.querySelectorAll('#bag-toggle button').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
         calculate();
     }
 
@@ -703,6 +712,16 @@
             lengthEl.step = '0.5';
             widthEl.step = '0.5';
             depthEl.step = '0.5';
+
+            // Switch bag sizes to lbs
+            document.getElementById('btn-bag1').textContent = '94 lb';
+            document.getElementById('btn-bag1').setAttribute('onclick', 'setBagSize(94)');
+            document.getElementById('btn-bag2').textContent = '80 lb';
+            document.getElementById('btn-bag2').setAttribute('onclick', 'setBagSize(80)');
+            bagSize = 94;
+            bagSizeKg = 42.6;
+            document.getElementById('btn-bag1').classList.add('active');
+            document.getElementById('btn-bag2').classList.remove('active');
         } else {
             lengthEl.value = (parseFloat(lengthEl.value) / 3.28084).toFixed(1);
             widthEl.value = (parseFloat(widthEl.value) / 3.28084).toFixed(1);
@@ -713,6 +732,16 @@
             lengthEl.step = '0.1';
             widthEl.step = '0.1';
             depthEl.step = '10';
+
+            // Switch bag sizes back to kg
+            document.getElementById('btn-bag1').textContent = '25 kg';
+            document.getElementById('btn-bag1').setAttribute('onclick', 'setBagSize(25)');
+            document.getElementById('btn-bag2').textContent = '20 kg';
+            document.getElementById('btn-bag2').setAttribute('onclick', 'setBagSize(20)');
+            bagSize = 25;
+            bagSizeKg = 25;
+            document.getElementById('btn-bag1').classList.add('active');
+            document.getElementById('btn-bag2').classList.remove('active');
         }
 
         currentUnit = unit;
@@ -726,7 +755,6 @@
         let width = parseFloat(document.getElementById('width').value) || 0;
         let depth = parseFloat(document.getElementById('depth').value) || 0;
 
-        // Display values for diagram
         let dispLength, dispWidth, dispDepth;
         if (currentUnit === 'imperial') {
             dispLength = length.toFixed(1) + ' ft';
@@ -747,27 +775,50 @@
         const volume = volumeRaw * 1.10;
 
         const cementKg = volume * 320;
-        const bags = Math.ceil(cementKg / bagSize);
+        const bags = Math.ceil(cementKg / bagSizeKg);
         const sandTonnes = volume * 0.64;
         const gravelTonnes = volume * 0.96;
 
-        const costCement = bags * PRICES[bagSize];
-        const costSand = sandTonnes * PRICES.sandPerTonne;
-        const costGravel = gravelTonnes * PRICES.gravelPerTonne;
-        const totalCost = costCement + costSand + costGravel;
+        let totalCost, currency, bagLabel, sandDisplay, gravelDisplay;
+
+        if (currentUnit === 'imperial') {
+            currency = '$';
+            const pricePerBag = PRICES_US[bagSize] || 5.50;
+            const costCement = bags * pricePerBag;
+            const sandTons = sandTonnes * 1.10231; // metric tonnes to US tons
+            const gravelTons = gravelTonnes * 1.10231;
+            const costSand = sandTons * PRICES_US.sandPerTon;
+            const costGravel = gravelTons * PRICES_US.gravelPerTon;
+            totalCost = costCement + costSand + costGravel;
+            bagLabel = 'Cement (' + bagSize + 'lb bags)';
+            sandDisplay = sandTons.toFixed(2);
+            gravelDisplay = gravelTons.toFixed(2);
+            document.getElementById('res-sand').textContent = sandDisplay;
+            document.getElementById('res-gravel').textContent = gravelDisplay;
+        } else {
+            currency = '£';
+            const costCement = bags * PRICES_UK[bagSize];
+            const costSand = sandTonnes * PRICES_UK.sandPerTonne;
+            const costGravel = gravelTonnes * PRICES_UK.gravelPerTonne;
+            totalCost = costCement + costSand + costGravel;
+            bagLabel = 'Cement (' + bagSize + 'kg bags)';
+            document.getElementById('res-sand').textContent = sandTonnes.toFixed(2);
+            document.getElementById('res-gravel').textContent = gravelTonnes.toFixed(2);
+        }
 
         document.getElementById('res-volume').textContent = volume.toFixed(2);
         document.getElementById('res-cement').textContent = bags;
-        document.getElementById('res-cement-label').textContent = 'Cement (' + bagSize + 'kg bags)';
-        document.getElementById('res-sand').textContent = sandTonnes.toFixed(2);
-        document.getElementById('res-gravel').textContent = gravelTonnes.toFixed(2);
-        document.getElementById('res-cost').textContent = '£' + Math.round(totalCost);
+        document.getElementById('res-cement-label').textContent = bagLabel;
+        document.getElementById('res-cost').textContent = currency + Math.round(totalCost);
+        document.getElementById('res-sand-unit').textContent = currentUnit === 'imperial' ? 'US tons' : 'tonnes';
+        document.getElementById('res-gravel-unit').textContent = currentUnit === 'imperial' ? 'US tons' : 'tonnes';
+        document.getElementById('res-cost-detail').textContent = currentUnit === 'imperial' ? 'approximate US prices' : 'approximate UK prices';
 
         // Update diagram
         document.getElementById('dim-length').textContent = dispLength;
         document.getElementById('dim-width').textContent = dispWidth;
         document.getElementById('dim-depth').textContent = dispDepth;
-        document.getElementById('dim-area').textContent = area.toFixed(2) + ' m²';
+        document.getElementById('dim-area').textContent = area.toFixed(2) + (currentUnit === 'imperial' ? ' ft²' : ' m²');
     }
 
     calculate();
